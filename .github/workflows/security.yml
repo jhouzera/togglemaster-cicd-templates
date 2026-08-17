@@ -1,0 +1,77 @@
+name: Security Scan
+
+on:
+  workflow_call:
+    inputs:
+      service-name:
+        required: true
+        type: string
+      service-language:
+        required: true
+        type: string
+      service-path:
+        required: true
+        type: string
+    secrets:
+      SONAR_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    name: Security (${{ inputs.service-name }})
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Scan dependencies and filesystem
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ inputs.service-path }}
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Setup Go for SAST
+        if: inputs.service-language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ inputs.service-path }}/go.mod
+          cache: false
+
+      - name: Run gosec
+        if: inputs.service-language == 'go'
+        uses: securego/gosec@v2.21.4
+        with:
+          args: ./${{ inputs.service-path }}/...
+
+      - name: Setup Python for SAST
+        if: inputs.service-language == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run bandit
+        if: inputs.service-language == 'python'
+        working-directory: ${{ inputs.service-path }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit==1.7.9
+          bandit -r . -f screen
+
+      - name: SonarCloud scan
+        if: env.SONAR_TOKEN != ''
+        continue-on-error: true
+        uses: SonarSource/sonarcloud-github-action@v2.3.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}

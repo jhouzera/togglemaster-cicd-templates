@@ -1,0 +1,84 @@
+name: Build and Publish Image
+
+on:
+  workflow_call:
+    inputs:
+      service-name:
+        required: true
+        type: string
+      service-path:
+        required: true
+        type: string
+      service-dockerfile:
+        required: true
+        type: string
+      aws-region:
+        required: true
+        type: string
+      role-to-assume:
+        required: true
+        type: string
+      ecr-repository-prefix:
+        required: false
+        type: string
+        default: togglemaster-lab
+      push-images:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: Image (${{ inputs.service-name }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        if: inputs.push-images
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.role-to-assume }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Login to ECR
+        if: inputs.push-images
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          if [[ "${{ inputs.push-images }}" == "true" ]]; then
+            IMAGE_URI="${ECR_REGISTRY}/${{ inputs.ecr-repository-prefix }}/${{ inputs.service-name }}:${IMAGE_TAG}"
+          else
+            IMAGE_URI="local/${{ inputs.service-name }}:${IMAGE_TAG}"
+          fi
+
+          docker build --pull -f "${{ inputs.service-dockerfile }}" -t "${IMAGE_URI}" "${{ inputs.service-path }}"
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.build-image.outputs.image_uri }}
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Push image to ECR
+        if: inputs.push-images
+        run: docker push "${{ steps.build-image.outputs.image_uri }}"

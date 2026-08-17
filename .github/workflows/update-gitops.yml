@@ -1,0 +1,92 @@
+name: Update GitOps Image Tag
+
+on:
+  workflow_call:
+    inputs:
+      service-name:
+        required: true
+        type: string
+      gitops-values-file:
+        required: true
+        type: string
+      push-images:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      GITOPS_TOKEN:
+        required: true
+      GITOPS_REPO:
+        required: true
+      GITOPS_BRANCH:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  update-gitops:
+    name: Update GitOps (${{ inputs.service-name }})
+    if: inputs.push-images
+    runs-on: ubuntu-latest
+    env:
+      GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+      GITOPS_REPO: ${{ secrets.GITOPS_REPO }}
+      GITOPS_BRANCH: ${{ secrets.GITOPS_BRANCH }}
+      VALUES_FILE: ${{ inputs.gitops-values-file }}
+      SERVICE_NAME: ${{ inputs.service-name }}
+      IMAGE_TAG: ${{ github.sha }}
+
+    steps:
+      - name: Checkout GitOps repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.GITOPS_REPO }}
+          token: ${{ env.GITOPS_TOKEN }}
+          ref: ${{ env.GITOPS_BRANCH != '' && env.GITOPS_BRANCH || 'main' }}
+          path: gitops
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Update service image tag
+        working-directory: gitops
+        run: |
+          pip install pyyaml==6.0.2
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import yaml
+
+          values_file = Path(os.environ["VALUES_FILE"])
+          if not values_file.is_file():
+              raise FileNotFoundError(f"Values file not found: {values_file}")
+
+          with values_file.open(encoding="utf-8") as file:
+              values = yaml.safe_load(file) or {}
+
+          image = values.setdefault("services", {}).setdefault(
+              os.environ["SERVICE_NAME"], {}
+          ).setdefault("image", {})
+          image["tag"] = os.environ["IMAGE_TAG"]
+
+          with values_file.open("w", encoding="utf-8") as file:
+              yaml.safe_dump(values, file, sort_keys=False)
+          PY
+
+      - name: Commit and push GitOps update
+        working-directory: gitops
+        run: |
+          if git diff --quiet; then
+            echo "No GitOps changes required"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$VALUES_FILE"
+          git commit -m "chore(gitops): update ${SERVICE_NAME} image to ${IMAGE_TAG}"
+          git push "https://x-access-token:${GITOPS_TOKEN}@github.com/${GITOPS_REPO}.git" "HEAD:${GITOPS_BRANCH:-main}"
