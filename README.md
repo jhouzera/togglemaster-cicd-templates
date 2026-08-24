@@ -26,6 +26,10 @@ Cada estágio da pipeline possui seu próprio workflow reutilizável:
 O arquivo `auto-pr-caller.yml` é um exemplo de caller local. Ele existe para mostrar como
 conceder as permissões exigidas pelo reusable workflow.
 
+O caller local usa `./.github/workflows/auto-pr.yml` porque os dois arquivos são publicados
+no mesmo repositório. Essa referência só pode resolver o arquivo que existe no commit que
+disparou o workflow; uma execução antiga não passa a usar correções publicadas depois.
+
 Os templates possuem cache de dependências e autenticação AWS via OIDC. O repositório consumidor define a concorrência e o encadeamento entre estágios.
 
 ## Fluxo recomendado
@@ -219,6 +223,11 @@ permissions:
 
 Permissões do caller e do reusable workflow são combinadas por restrição: o reusable não
 pode ampliar o que o caller não autorizou.
+
+Depois de adicionar a permissão, faça commit e push do caller. Se o erro vier de uma execução
+antiga, reexecute o workflow a partir de um commit novo na branch. Em especial, não use como
+referência de diagnóstico uma execução disparada antes da publicação da correção: ela ainda
+será avaliada com o YAML antigo.
 
 ### Reusable workflow não encontrado
 
