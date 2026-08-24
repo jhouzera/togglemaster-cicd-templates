@@ -1,0 +1,13 @@
+name: auto-pr
+
+on:
+  push:
+    branches:
+      - 'feat/**'
+      - 'bug/**'
+
+jobs:
+  auto-pr:
+    uses: ./.github/workflows/auto-pr.yml
+    with:
+      target-branch: main

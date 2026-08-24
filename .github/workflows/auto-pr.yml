@@ -1,0 +1,46 @@
+name: Auto Pull Request
+
+on:
+  workflow_call:
+    inputs:
+      target-branch:
+        description: "Branch de destino do Pull Request automatico"
+        required: false
+        type: string
+        default: develop
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  auto-pr:
+    name: Abrir PR automatico (${{ github.ref_name }} -> ${{ inputs.target-branch }})
+    if: startsWith(github.ref, 'refs/heads/feat/') || startsWith(github.ref, 'refs/heads/bug/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Criar Pull Request automaticamente
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          BASE="${{ inputs.target-branch }}"
+
+          EXISTING=$(gh pr list --repo "${GITHUB_REPOSITORY}" --head "${BRANCH}" --base "${BASE}" --state open --json number --jq 'length')
+          if [ "${EXISTING}" -gt 0 ]; then
+            echo "Ja existe um Pull Request aberto de ${BRANCH} para ${BASE}. Nada a fazer."
+            exit 0
+          fi
+
+          gh pr create \
+            --repo "${GITHUB_REPOSITORY}" \
+            --base "${BASE}" \
+            --head "${BRANCH}" \
+            --title "$(git log -1 --pretty=%s)" \
+            --body "$(printf 'Pull Request criado automaticamente a partir da branch `%s`.\n\nRevise e aprove antes de mergiar em `%s`.' "${BRANCH}" "${BASE}")" \
+            --fill-first || echo "Nao foi possivel criar o PR automaticamente; verifique se ha commits na branch."
