@@ -43,17 +43,10 @@ jobs:
 			service-path: app/auth-service
 			service-dockerfile: app/auth-service/Dockerfile
 			aws-region: us-east-1
-			role-to-assume: arn:aws:iam::ACCOUNT_ID:role/github-actions-ecr-push-role
-			push-images: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-
-	update-gitops:
-		needs: image
-		uses: jhouzera/togglemaster-cicd-templates/.github/workflows/update-gitops.yml@main
-		with:
-			service-name: auth-service
-			push-images: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-			gitops-values-file: charts/togglemaster/apps/auth-values.yaml
-		secrets: inherit
+			role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+			ecr-repository-prefix: togglemaster-dev
+			image-tag: ${{ github.ref_name }}
+			push-images: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
 ```
 
 ## Secrets exigidos pelo consumidor
@@ -62,6 +55,10 @@ jobs:
 - `GITOPS_REPO`: proprietário e nome do repositório GitOps.
 - `GITOPS_BRANCH`: branch GitOps; usa `main` quando vazio.
 - `SONAR_TOKEN`: opcional; habilita o scan SonarCloud.
+
+O workflow de imagem publica somente tags semanticas `vMAJOR.MINOR.PATCH`. A promocao no
+cluster e feita pelo ArgoCD Image Updater; o workflow legado `update-gitops.yml` nao deve
+ser encadeado junto, pois ele grava SHA no values file e compete com o Image Updater.
 
 ## Versionamento
 

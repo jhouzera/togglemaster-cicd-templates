@@ -13,6 +13,9 @@ on:
         required: false
         type: boolean
         default: false
+      image-tag:
+        required: true
+        type: string
     secrets:
       GITOPS_TOKEN:
         required: true
@@ -35,7 +38,7 @@ jobs:
       GITOPS_BRANCH: ${{ secrets.GITOPS_BRANCH }}
       VALUES_FILE: ${{ inputs.gitops-values-file }}
       SERVICE_NAME: ${{ inputs.service-name }}
-      IMAGE_TAG: ${{ github.sha }}
+      IMAGE_TAG: ${{ inputs.image-tag }}
 
     steps:
       - name: Checkout GitOps repository
@@ -55,6 +58,11 @@ jobs:
       - name: Update service image tag
         working-directory: gitops
         run: |
+          if [[ ! "$IMAGE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "GitOps image tags must use semantic versioning: vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
           pip install pyyaml==6.0.2
           python - <<'PY'
           import os

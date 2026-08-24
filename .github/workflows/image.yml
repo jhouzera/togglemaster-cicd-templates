@@ -21,7 +21,10 @@ on:
       ecr-repository-prefix:
         required: false
         type: string
-        default: togglemaster-lab
+        default: togglemaster-dev
+      image-tag:
+        required: true
+        type: string
       push-images:
         required: false
         type: boolean
@@ -58,8 +61,13 @@ jobs:
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ inputs.image-tag }}
         run: |
+          if [[ "${{ inputs.push-images }}" == "true" && ! "$IMAGE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release image tags must use semantic versioning: vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
           if [[ "${{ inputs.push-images }}" == "true" ]]; then
             IMAGE_URI="${ECR_REGISTRY}/${{ inputs.ecr-repository-prefix }}/${{ inputs.service-name }}:${IMAGE_TAG}"
           else
