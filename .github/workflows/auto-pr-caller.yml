@@ -6,6 +6,10 @@ on:
       - 'feat/**'
       - 'bug/**'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   auto-pr:
     uses: ./.github/workflows/auto-pr.yml
