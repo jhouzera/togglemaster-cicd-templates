@@ -36,7 +36,7 @@ Os templates possuem cache de dependências e autenticação AWS via OIDC. O rep
 
 ```text
 Pull Request
-	-> validate
+	-> validate (gera e publica artefatos AIOps em .aiops/)
 	-> security
 	-> image (sem push, valida o build)
 
@@ -49,6 +49,11 @@ merge/tag de release
 Use apenas uma estratégia de promoção de imagem. A recomendada é o ArgoCD Image Updater,
 com digest/tag imutável. Não encadeie `update-gitops.yml` junto com o Image Updater para o
 mesmo serviço, pois os dois mecanismos podem competir pela fonte de verdade.
+
+A etapa `validate` agora publica um artifact chamado `aiops-<service-name>-<run-id>` contendo
+`aiops_test_report.schema.json`, `aiops_test_report.json` e `aiops_test_summary.md`. Esse
+bundle serve como evidência estruturada para triagem, comparação de regressões e integração
+futura com automações de IA/Gemini sem bloquear a pipeline em uma chamada externa.
 
 ## Consumo remoto
 
@@ -139,6 +144,12 @@ e aprove alterações conforme a política da organização.
 Obrigatórios: `service-name`, `service-language` (`go` ou `python`) e `service-path`.
 Para Go, espera um `go.mod` e executa build, testes, vet e golangci-lint. Para Python,
 espera `requirements.txt` e executa compileall e Ruff.
+
+Ao final, o template também gera artefatos AIOps em `.aiops/` e publica um artifact do tipo
+`aiops-<service-name>-<run-id>` contendo `aiops_test_report.schema.json`,
+`aiops_test_report.json` e `aiops_test_summary.md`. Esses arquivos padronizam o resultado
+para consumo por automações futuras (por exemplo, triagem assistida por IA) sem depender de
+chamadas externas nesta etapa.
 
 ### `security.yml`
 
