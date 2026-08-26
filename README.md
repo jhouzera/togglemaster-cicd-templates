@@ -91,7 +91,7 @@ jobs:
 			push-images: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
 ```
 
-Para produção, prefira uma tag major estável (`@v1`) ou SHA de release em vez de `@main`.
+Para uso estável, prefira uma tag major (`@v1`) ou SHA de release em vez de `@main`.
 O SHA torna a execução reproduzível e impede que uma alteração futura no catálogo mude um
 pipeline sem revisão no repositório consumidor.
 
@@ -101,7 +101,7 @@ O reusable workflow aceita um único input:
 
 | Input | Tipo | Obrigatório | Padrão | Descrição |
 | --- | --- | --- | --- | --- |
-| `target-branch` | string | não | `develop` | Branch base do Pull Request |
+| `target-branch` | string | não | `develop` | Branch base do Pull Request no laboratorio |
 
 Caller remoto:
 
@@ -196,7 +196,7 @@ ser encadeado junto, pois ele grava SHA no values file e compete com o Image Upd
 - Use `permissions` explícitas em todo caller; mantenha `contents: read` como padrão.
 - Conceda `pull-requests: write` somente ao caller do auto-PR.
 - Conceda `id-token: write` somente ao job que publica no ECR.
-- Proteja `main`, `develop`, `qa` e `prod` conforme o processo de promoção.
+- Proteja a branch `develop` do laboratorio e exija os checks obrigatorios antes do merge.
 - Exija revisão para mudanças em workflows e em este repositório de templates.
 - Não coloque tokens, credenciais, state ou arquivos de plano em commits.
 - Prefira SHAs ou tags imutáveis para ações externas e para este catálogo.
