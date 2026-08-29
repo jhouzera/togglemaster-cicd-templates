@@ -12,12 +12,6 @@ on:
       service-dockerfile:
         required: true
         type: string
-      aws-region:
-        required: true
-        type: string
-      role-to-assume:
-        required: true
-        type: string
       ecr-repository-prefix:
         required: false
         type: string
@@ -54,8 +48,8 @@ jobs:
         if: inputs.push-images
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ inputs.role-to-assume }}
-          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Login to ECR
         if: inputs.push-images
