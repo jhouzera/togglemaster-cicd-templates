@@ -2,6 +2,16 @@ name: Build and Publish Image
 
 on:
   workflow_call:
+    outputs:
+      image-repository:
+        description: "ECR repository of the published image"
+        value: ${{ jobs.image.outputs.image-repository }}
+      image-tag:
+        description: "Semantic version tag of the published image"
+        value: ${{ jobs.image.outputs.image-tag }}
+      image-digest:
+        description: "Immutable digest of the published image"
+        value: ${{ jobs.image.outputs.image-digest }}
     inputs:
       service-name:
         required: true
@@ -36,6 +46,10 @@ jobs:
     name: Image (${{ inputs.service-name }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    outputs:
+      image-repository: ${{ steps.image-metadata.outputs.image-repository }}
+      image-tag: ${{ steps.image-metadata.outputs.image-tag }}
+      image-digest: ${{ steps.image-metadata.outputs.image-digest }}
     permissions:
       contents: read
       id-token: write
@@ -89,3 +103,28 @@ jobs:
       - name: Push image to ECR
         if: inputs.push-images
         run: docker push "${{ steps.build-image.outputs.image_uri }}"
+
+      - name: Read published image digest
+        if: inputs.push-images
+        id: image-metadata
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ inputs.ecr-repository-prefix }}/${{ inputs.service-name }}
+          IMAGE_TAG: ${{ inputs.image-tag }}
+        run: |
+          IMAGE_DIGEST="$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_TAG" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)"
+
+          if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "Published image digest is invalid: $IMAGE_DIGEST"
+            exit 1
+          fi
+
+          {
+            echo "image-repository=${ECR_REGISTRY}/${ECR_REPOSITORY}"
+            echo "image-tag=$IMAGE_TAG"
+            echo "image-digest=$IMAGE_DIGEST"
+          } >> "$GITHUB_OUTPUT"

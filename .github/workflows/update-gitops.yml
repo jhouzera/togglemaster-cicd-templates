@@ -1,4 +1,4 @@
-name: Update GitOps Image Tag
+name: Promote Image to GitOps Dev
 
 on:
   workflow_call:
@@ -9,11 +9,13 @@ on:
       gitops-values-file:
         required: true
         type: string
-      push-images:
-        required: false
-        type: boolean
-        default: false
+      image-repository:
+        required: true
+        type: string
       image-tag:
+        required: true
+        type: string
+      image-digest:
         required: true
         type: string
     secrets:
@@ -21,52 +23,102 @@ on:
         required: true
       GITOPS_REPO:
         required: true
-      GITOPS_BRANCH:
-        required: false
 
 permissions:
   contents: read
 
 jobs:
   update-gitops:
-    name: Update GitOps (${{ inputs.service-name }})
-    if: inputs.push-images
+    name: Promote ${{ inputs.service-name }} to dev
     runs-on: ubuntu-latest
+    concurrency:
+      group: gitops-dev-${{ inputs.service-name }}
+      cancel-in-progress: false
     env:
-      GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
       GITOPS_REPO: ${{ secrets.GITOPS_REPO }}
-      GITOPS_BRANCH: ${{ secrets.GITOPS_BRANCH }}
       VALUES_FILE: ${{ inputs.gitops-values-file }}
       SERVICE_NAME: ${{ inputs.service-name }}
+      IMAGE_REPOSITORY: ${{ inputs.image-repository }}
       IMAGE_TAG: ${{ inputs.image-tag }}
+      IMAGE_DIGEST: ${{ inputs.image-digest }}
 
     steps:
+      - name: Validate promotion inputs
+        id: inputs
+        run: |
+          case "$SERVICE_NAME" in
+            auth-service)
+              SERVICE_KEY=auth
+              EXPECTED_VALUES_FILE=environments/dev/apps/auth-values.yaml
+              ;;
+            flag-service)
+              SERVICE_KEY=flag
+              EXPECTED_VALUES_FILE=environments/dev/apps/flag-values.yaml
+              ;;
+            targeting-service)
+              SERVICE_KEY=targeting
+              EXPECTED_VALUES_FILE=environments/dev/apps/targeting-values.yaml
+              ;;
+            evaluation-service)
+              SERVICE_KEY=evaluation
+              EXPECTED_VALUES_FILE=environments/dev/apps/evaluation-values.yaml
+              ;;
+            analytics-service)
+              SERVICE_KEY=analytics
+              EXPECTED_VALUES_FILE=environments/dev/apps/analytics-values.yaml
+              ;;
+            *)
+              echo "Unsupported service: $SERVICE_NAME"
+              exit 1
+              ;;
+          esac
+
+          if [[ "$VALUES_FILE" != "$EXPECTED_VALUES_FILE" ]]; then
+            echo "Values file does not match service: $VALUES_FILE"
+            exit 1
+          fi
+
+          if [[ ! "$IMAGE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Image tag must use semantic versioning: vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
+          if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "Image digest is invalid"
+            exit 1
+          fi
+
+          if [[ "$IMAGE_REPOSITORY" != */togglemaster-dev/"$SERVICE_NAME" ]]; then
+            echo "Image repository must target togglemaster-dev/$SERVICE_NAME"
+            exit 1
+          fi
+
+          echo "service-key=$SERVICE_KEY" >> "$GITHUB_OUTPUT"
+
       - name: Checkout GitOps repository
         uses: actions/checkout@v4
         with:
           repository: ${{ env.GITOPS_REPO }}
-          token: ${{ env.GITOPS_TOKEN }}
-          ref: ${{ env.GITOPS_BRANCH != '' && env.GITOPS_BRANCH || 'main' }}
+          token: ${{ secrets.GITOPS_TOKEN }}
+          ref: main
           path: gitops
-          persist-credentials: false
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Update service image tag
+      - name: Update image reference
         working-directory: gitops
+        env:
+          SERVICE_KEY: ${{ steps.inputs.outputs.service-key }}
         run: |
-          if [[ ! "$IMAGE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "GitOps image tags must use semantic versioning: vMAJOR.MINOR.PATCH"
-            exit 1
-          fi
-
-          pip install pyyaml==6.0.2
+          python -m pip install --disable-pip-version-check pyyaml==6.0.2
           python - <<'PY'
           import os
           from pathlib import Path
+
           import yaml
 
           values_file = Path(os.environ["VALUES_FILE"])
@@ -76,25 +128,56 @@ jobs:
           with values_file.open(encoding="utf-8") as file:
               values = yaml.safe_load(file) or {}
 
-          image = values.setdefault("services", {}).setdefault(
-              os.environ["SERVICE_NAME"], {}
-          ).setdefault("image", {})
+          try:
+              image = values["services"][os.environ["SERVICE_KEY"]]["image"]
+          except KeyError as error:
+              raise ValueError("Expected services.<service>.image structure is missing") from error
+
+          image["repository"] = os.environ["IMAGE_REPOSITORY"]
           image["tag"] = os.environ["IMAGE_TAG"]
+          image["digest"] = os.environ["IMAGE_DIGEST"]
 
           with values_file.open("w", encoding="utf-8") as file:
               yaml.safe_dump(values, file, sort_keys=False)
           PY
 
-      - name: Commit and push GitOps update
+      - name: Validate rendered manifests
         working-directory: gitops
         run: |
-          if git diff --quiet; then
-            echo "No GitOps changes required"
+          helm lint charts/togglemaster -f "$VALUES_FILE"
+          helm template "togglemaster-${SERVICE_NAME}" charts/togglemaster \
+            -f charts/togglemaster/values.yaml \
+            -f "$VALUES_FILE" >/dev/null
+
+      - name: Create promotion pull request
+        working-directory: gitops
+        run: |
+          if git diff --quiet -- "$VALUES_FILE"; then
+            echo "GitOps already references this image"
             exit 0
           fi
 
+          BRANCH_NAME="promotion/dev/${SERVICE_NAME}-${GITHUB_RUN_ID}"
+          git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$VALUES_FILE"
-          git commit -m "chore(gitops): update ${SERVICE_NAME} image to ${IMAGE_TAG}"
-          git push "https://x-access-token:${GITOPS_TOKEN}@github.com/${GITOPS_REPO}.git" "HEAD:${GITOPS_BRANCH:-main}"
+          git commit -m "chore(gitops): promote ${SERVICE_NAME} to ${IMAGE_TAG}"
+          git push origin "HEAD:${BRANCH_NAME}"
+
+          cat > pull-request.md <<EOF
+          ## Image promotion to dev
+
+          - Service: \`${SERVICE_NAME}\`
+          - Image: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\`
+          - Tag: \`${IMAGE_TAG}\`
+          - Source: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}
+          - Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          EOF
+
+          gh pr create \
+            --repo "$GITOPS_REPO" \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "chore(gitops): promote ${SERVICE_NAME} to ${IMAGE_TAG}" \
+            --body-file pull-request.md

@@ -19,8 +19,8 @@ Cada estágio da pipeline possui seu próprio workflow reutilizável:
 - `security.yml`: scan de dependências/arquivos com Trivy, SAST com gosec ou bandit e
 	SonarCloud opcional.
 - `image.yml`: build, scan da imagem e push no Amazon ECR quando `push-images=true`.
-- `update-gitops.yml`: altera uma tag em um arquivo de values e faz commit no repositório
-	GitOps.
+- `update-gitops.yml`: atualiza a referencia imutavel de uma imagem e abre Pull Request no
+	repositorio GitOps.
 - `auto-pr.yml`: cria um Pull Request para branches `feat/**` e `bug/**`.
 
 O arquivo `auto-pr-caller.yml` é um exemplo de caller local. Ele existe para mostrar como
@@ -39,15 +39,14 @@ Pull Request
 	-> security
 	-> image (sem push, valida o build)
 
-merge/tag de release
+push em develop
 	-> image (OIDC + push no ECR)
-	-> ArgoCD Image Updater ou update-gitops
+	-> update-gitops (Pull Request com tag e digest)
 	-> sincronização no cluster
 ```
 
-Use apenas uma estratégia de promoção de imagem. A recomendada é o ArgoCD Image Updater,
-com digest/tag imutável. Não encadeie `update-gitops.yml` junto com o Image Updater para o
-mesmo serviço, pois os dois mecanismos podem competir pela fonte de verdade.
+O GitHub Actions e o unico autor das promocoes. O ArgoCD reconcilia o estado declarado no
+GitOps e nao possui credenciais para escrever nesse repositorio.
 
 bundle serve como evidência estruturada para triagem, comparação de regressões e integração
 futura com automações de IA/Gemini sem bloquear a pipeline em uma chamada externa.
@@ -159,17 +158,16 @@ validar apenas o build e o scan.
 
 ### `update-gitops.yml`
 
-Obrigatórios: `service-name`, `gitops-values-file` e `image-tag`, além dos secrets
-`GITOPS_TOKEN` e `GITOPS_REPO`. `GITOPS_BRANCH` é opcional e usa `main` quando vazio.
-O arquivo deve possuir a estrutura `services.<service-name>.image.tag`. A atualização usa
-PyYAML e faz commit somente quando existe diferença.
+Obrigatórios: `service-name`, `gitops-values-file`, `image-repository`, `image-tag` e
+`image-digest`, além dos secrets `GITOPS_TOKEN` e `GITOPS_REPO`. O values deve estar em
+`environments/dev/apps/` e possuir a estrutura `services.<service-name>.image`. A atualizacao
+usa PyYAML, valida o chart Helm e abre Pull Request somente quando existe diferença.
 
 ## Secrets e permissões do consumidor
 
 - `GITOPS_TOKEN`: token com escrita no repositório GitOps, somente se `update-gitops.yml`
 	for usado.
 - `GITOPS_REPO`: proprietário e nome do repositório GitOps.
-- `GITOPS_BRANCH`: branch GitOps; usa `main` quando vazio.
 - `SONAR_TOKEN`: opcional; habilita o scan SonarCloud.
 
 Para `image.yml`, configure no caller `permissions: id-token: write` no job que chama o
@@ -179,9 +177,8 @@ reusable workflow. A role AWS deve confiar no repositório, branch/environment e
 Os templates não recebem secrets de runtime da aplicação. Banco, API keys e master keys
 devem continuar no Secrets Manager, preferencialmente sincronizados por External Secrets.
 
-O workflow de imagem publica somente tags semanticas `vMAJOR.MINOR.PATCH`. A promocao no
-cluster e feita pelo ArgoCD Image Updater; o workflow legado `update-gitops.yml` nao deve
-ser encadeado junto, pois ele grava SHA no values file e compete com o Image Updater.
+O workflow de imagem publica tags semanticas `vMAJOR.MINOR.PATCH` e expoe o digest retornado
+pelo ECR. O workflow `update-gitops.yml` registra essa referencia imutavel no GitOps.
 
 ## Segurança e governança
 
