@@ -46,7 +46,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
 
       - name: Configure AWS credentials via OIDC
         if: inputs.push-images
