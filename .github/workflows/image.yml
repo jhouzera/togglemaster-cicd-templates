@@ -26,9 +26,13 @@ on:
         required: true
         type: string
       push-images:
-        required: false
+        description: "Push images to ECR"
         type: boolean
         default: false
+      environment:
+        description: "Environment to use"
+        type: string
+        default: "ci-build"
 
 permissions:
   contents: read
@@ -37,7 +41,7 @@ jobs:
   image:
     name: Image (${{ inputs.service-name }})
     runs-on: ubuntu-latest
-    environment: dev
+    environment: ${{ inputs.environment }}
     permissions:
       contents: read
       id-token: write
