@@ -20,19 +20,9 @@ jobs:
   validate:
     name: Validate (${{ inputs.service-name }})
     runs-on: ubuntu-latest
-    env:
-      AIOPS_DIR: ${{ github.workspace }}/.aiops
-      GO_TEST_LOG: ${{ github.workspace }}/.aiops/go-test.log
-      GO_LINT_LOG: ${{ github.workspace }}/.aiops/go-lint.log
-      PY_VALIDATE_LOG: ${{ github.workspace }}/.aiops/python-validate.log
-      PY_LINT_LOG: ${{ github.workspace }}/.aiops/python-lint.log
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Prepare AIOps workspace
-        run: mkdir -p "$AIOPS_DIR"
 
       - name: Setup Go
         if: inputs.service-language == 'go'
@@ -49,8 +39,8 @@ jobs:
           set -o pipefail
           go mod download
           go build ./...
-          go test ./... 2>&1 | tee "$GO_TEST_LOG"
-          go vet ./... 2>&1 | tee -a "$GO_TEST_LOG"
+          go test ./...
+          go vet ./...
 
       - name: Lint Go
         id: go_lint
@@ -77,7 +67,7 @@ jobs:
           set -o pipefail
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          python -m compileall . 2>&1 | tee "$PY_VALIDATE_LOG"
+          python -m compileall .
 
       - name: Lint Python
         id: python_lint
@@ -86,41 +76,6 @@ jobs:
         run: |
           set -o pipefail
           pip install ruff==0.6.9
-          ruff check . 2>&1 | tee "$PY_LINT_LOG"
+          ruff check .
 
-      - name: Checkout CI templates tools
-        if: always()
-        uses: actions/checkout@v4
-        with:
-          repository: jhouzera/togglemaster-cicd-templates
-          path: .ci-templates
 
-      - name: Generate AIOps test analysis artifacts
-        if: always()
-        env:
-          TEST_OUTCOME: ${{ inputs.service-language == 'go' && steps.go_tests.outcome || steps.python_validate.outcome }}
-          LINT_OUTCOME: ${{ inputs.service-language == 'go' && steps.go_lint.outcome || steps.python_lint.outcome }}
-          TEST_LOG_FILE: ${{ inputs.service-language == 'go' && env.GO_TEST_LOG || env.PY_VALIDATE_LOG }}
-          LINT_LOG_FILE: ${{ inputs.service-language == 'go' && env.GO_LINT_LOG || env.PY_LINT_LOG }}
-        run: |
-          mkdir -p "$AIOPS_DIR"
-          if [ -n "$LINT_LOG_FILE" ] && [ ! -f "$LINT_LOG_FILE" ]; then
-            echo "Lint step output is available in job logs." > "$LINT_LOG_FILE"
-          fi
-          python3 .ci-templates/tests/aiops_analyze_test_results.py \
-            --service-name "${{ inputs.service-name }}" \
-            --service-language "${{ inputs.service-language }}" \
-            --service-path "${{ inputs.service-path }}" \
-            --test-outcome "$TEST_OUTCOME" \
-            --lint-outcome "$LINT_OUTCOME" \
-            --test-log "$TEST_LOG_FILE" \
-            --lint-log "$LINT_LOG_FILE" \
-            --output-dir "$AIOPS_DIR"
-
-      - name: Publish AIOps artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: aiops-${{ inputs.service-name }}-${{ github.run_id }}
-          path: ${{ env.AIOPS_DIR }}
-          if-no-files-found: error
