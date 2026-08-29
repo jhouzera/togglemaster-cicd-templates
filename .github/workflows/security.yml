@@ -29,7 +29,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
 
       - name: Scan dependencies and filesystem
         uses: aquasecurity/trivy-action@v0.36.0
