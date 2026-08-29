@@ -48,6 +48,11 @@ jobs:
           go-version-file: ${{ inputs.service-path }}/go.mod
           cache: false
 
+      - name: Download Go dependencies
+        if: inputs.service-language == 'go'
+        working-directory: ${{ inputs.service-path }}
+        run: go mod download
+
       - name: Run gosec
         if: inputs.service-language == 'go'
         uses: securego/gosec@v2.21.4
