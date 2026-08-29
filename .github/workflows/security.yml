@@ -55,9 +55,10 @@ jobs:
 
       - name: Run gosec
         if: inputs.service-language == 'go'
-        uses: securego/gosec@v2.21.4
-        with:
-          args: ./${{ inputs.service-path }}/...
+        working-directory: ${{ inputs.service-path }}
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.21.4
+          $(go env GOPATH)/bin/gosec ./...
 
       - name: Setup Python for SAST
         if: inputs.service-language == 'python'
