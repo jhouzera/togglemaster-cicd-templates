@@ -57,7 +57,7 @@ jobs:
         if: inputs.service-language == 'go'
         working-directory: ${{ inputs.service-path }}
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.21.4
+          curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.21.4
           $(go env GOPATH)/bin/gosec ./...
 
       - name: Setup Python for SAST
