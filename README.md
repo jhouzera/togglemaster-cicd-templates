@@ -36,7 +36,6 @@ Os templates possuem cache de dependências e autenticação AWS via OIDC. O rep
 
 ```text
 Pull Request
-	-> validate (gera e publica artefatos AIOps em .aiops/)
 	-> security
 	-> image (sem push, valida o build)
 
@@ -50,8 +49,6 @@ Use apenas uma estratégia de promoção de imagem. A recomendada é o ArgoCD Im
 com digest/tag imutável. Não encadeie `update-gitops.yml` junto com o Image Updater para o
 mesmo serviço, pois os dois mecanismos podem competir pela fonte de verdade.
 
-A etapa `validate` agora publica um artifact chamado `aiops-<service-name>-<run-id>` contendo
-`aiops_test_report.schema.json`, `aiops_test_report.json` e `aiops_test_summary.md`. Esse
 bundle serve como evidência estruturada para triagem, comparação de regressões e integração
 futura com automações de IA/Gemini sem bloquear a pipeline em uma chamada externa.
 
@@ -84,8 +81,7 @@ jobs:
 			service-name: auth-service
 			service-path: app/auth-service
 			service-dockerfile: app/auth-service/Dockerfile
-			aws-region: us-east-1
-			role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+			environment: dev
 			ecr-repository-prefix: togglemaster-dev
 			image-tag: ${{ github.ref_name }}
 			push-images: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
@@ -145,9 +141,6 @@ Obrigatórios: `service-name`, `service-language` (`go` ou `python`) e `service-
 Para Go, espera um `go.mod` e executa build, testes, vet e golangci-lint. Para Python,
 espera `requirements.txt` e executa compileall e Ruff.
 
-Ao final, o template também gera artefatos AIOps em `.aiops/` e publica um artifact do tipo
-`aiops-<service-name>-<run-id>` contendo `aiops_test_report.schema.json`,
-`aiops_test_report.json` e `aiops_test_summary.md`. Esses arquivos padronizam o resultado
 para consumo por automações futuras (por exemplo, triagem assistida por IA) sem depender de
 chamadas externas nesta etapa.
 
@@ -159,8 +152,7 @@ corrigidas; SonarCloud é informativo porque o step está com `continue-on-error
 
 ### `image.yml`
 
-Obrigatórios: `service-name`, `service-path`, `service-dockerfile`, `aws-region`,
-`role-to-assume` e `image-tag`. `ecr-repository-prefix` tem padrão `togglemaster-dev`.
+Obrigatórios: `service-name`, `service-path`, `service-dockerfile` e `image-tag`.
 Quando `push-images=true`, a tag precisa seguir `vMAJOR.MINOR.PATCH` ou
 `MAJOR.MINOR.PATCH`, o job exige OIDC e publica no ECR. Em PR, use `push-images=false` para
 validar apenas o build e o scan.
@@ -248,7 +240,6 @@ contém o arquivo e que o workflow possui `on: workflow_call`.
 
 ### Falha ao assumir role AWS
 
-Confirme `id-token: write`, `role-to-assume`, `aws-region`, a trust policy da role e o
 `sub` emitido pelo GitHub. Em jobs que chamam reusable workflows, valide se o `environment:`
 está no nível suportado pelo caller e não dependa de um claim que o GitHub não emite nesse
 contexto.
