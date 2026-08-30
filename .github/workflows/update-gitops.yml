@@ -18,11 +18,15 @@ on:
       image-digest:
         required: true
         type: string
+      gitops-repo:
+        required: false
+        type: string
+        default: "jhouzera/togglemaster-gitops"
     secrets:
       GITOPS_TOKEN:
         required: true
       GITOPS_REPO:
-        required: true
+        required: false
 
 permissions:
   contents: read
@@ -36,7 +40,7 @@ jobs:
       cancel-in-progress: false
     env:
       GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
-      GITOPS_REPO: ${{ secrets.GITOPS_REPO }}
+      GITOPS_REPO: ${{ inputs.gitops-repo != '' && inputs.gitops-repo || secrets.GITOPS_REPO || 'jhouzera/togglemaster-gitops' }}
       VALUES_FILE: ${{ inputs.gitops-values-file }}
       SERVICE_NAME: ${{ inputs.service-name }}
       IMAGE_REPOSITORY: ${{ inputs.image-repository }}
@@ -47,6 +51,12 @@ jobs:
       - name: Validate promotion inputs
         id: inputs
         run: |
+          if [[ "$GITOPS_REPO" == "$GITHUB_REPOSITORY" ]]; then
+            echo "Error: GITOPS_REPO ($GITOPS_REPO) cannot be the application repository ($GITHUB_REPOSITORY)."
+            echo "Please ensure GITOPS_REPO points to the GitOps repository (e.g. jhouzera/togglemaster-gitops)."
+            exit 1
+          fi
+
           case "$SERVICE_NAME" in
             auth-service)
               SERVICE_KEY=auth
@@ -163,7 +173,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$VALUES_FILE"
           git commit -m "chore(gitops): promote ${SERVICE_NAME} to ${IMAGE_TAG}"
-          git push origin "HEAD:${BRANCH_NAME}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITOPS_REPO}.git" "HEAD:${BRANCH_NAME}"
 
           cat > pull-request.md <<EOF
           ## Image promotion to dev
