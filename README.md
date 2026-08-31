@@ -147,14 +147,15 @@ chamadas externas nesta etapa.
 
 Obrigatórios: `service-name`, `service-language` e `service-path`. Aceita o secret opcional
 `SONAR_TOKEN`. Trivy bloqueia vulnerabilidades `CRITICAL` detectadas, ignorando as não
-corrigidas; SonarCloud é informativo porque o step está com `continue-on-error`.
+corrigidas. Quando `SONAR_TOKEN` estiver configurado, o SonarCloud aguarda o Quality Gate e
+falha o job de seguranca quando ele nao for aprovado.
 
 ### `image.yml`
 
 Obrigatórios: `service-name`, `service-path`, `service-dockerfile` e `image-tag`.
 Quando `push-images=true`, a tag precisa seguir `vMAJOR.MINOR.PATCH` ou
-`MAJOR.MINOR.PATCH`, o job exige OIDC e publica no ECR. Em PR, use `push-images=false` para
-validar apenas o build e o scan.
+`MAJOR.MINOR.PATCH`; o workflow acrescenta o SHA curto do commit antes de publicar no ECR.
+Em PR, use `push-images=false` para validar apenas o build e o scan.
 
 ### `update-gitops.yml`
 
@@ -177,7 +178,7 @@ reusable workflow. A role AWS deve confiar no repositório, branch/environment e
 Os templates não recebem secrets de runtime da aplicação. Banco, API keys e master keys
 devem continuar no Secrets Manager, preferencialmente sincronizados por External Secrets.
 
-O workflow de imagem publica tags semanticas `vMAJOR.MINOR.PATCH` e expoe o digest retornado
+O workflow de imagem publica tags `vMAJOR.MINOR.PATCH-<sha-curto>` e expoe o digest retornado
 pelo ECR. O workflow `update-gitops.yml` registra essa referencia imutavel no GitOps.
 
 ## Segurança e governança

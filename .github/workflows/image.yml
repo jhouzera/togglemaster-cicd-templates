@@ -82,13 +82,17 @@ jobs:
           fi
 
           if [[ "${{ inputs.push-images }}" == "true" ]]; then
+            IMAGE_TAG="${IMAGE_TAG}-${GITHUB_SHA:0:7}"
             IMAGE_URI="${ECR_REGISTRY}/${{ inputs.ecr-repository-prefix }}/${{ inputs.service-name }}:${IMAGE_TAG}"
           else
             IMAGE_URI="local/${{ inputs.service-name }}:${IMAGE_TAG}"
           fi
 
           docker build --pull -f "${{ inputs.service-dockerfile }}" -t "${IMAGE_URI}" "${{ inputs.service-path }}"
-          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          {
+            echo "image_uri=${IMAGE_URI}"
+            echo "image_tag=${IMAGE_TAG}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
@@ -110,7 +114,7 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ inputs.ecr-repository-prefix }}/${{ inputs.service-name }}
-          IMAGE_TAG: ${{ inputs.image-tag }}
+          IMAGE_TAG: ${{ steps.build-image.outputs.image_tag }}
         run: |
           IMAGE_DIGEST="$(aws ecr describe-images \
             --repository-name "$ECR_REPOSITORY" \
