@@ -49,7 +49,6 @@ jobs:
         with:
           version: v2.13.2
           working-directory: ${{ inputs.service-path }}
-          args: --out-format=colored-line-number
 
       - name: Setup Python
         if: inputs.service-language == 'python'
