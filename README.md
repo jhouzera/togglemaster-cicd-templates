@@ -260,3 +260,5 @@ done
 
 O uso de stdin é útil em ambientes onde o empacotamento do `actionlint` não consegue ler
 caminhos do workspace diretamente.
+
+teste
