@@ -117,7 +117,7 @@ jobs:
 	auto-pr:
 		uses: jhouzera/togglemaster-cicd-templates/.github/workflows/auto-pr.yml@v1
 		with:
-			target-branch: develop
+			target-branch: main
 ```
 
 O bloco `permissions` é obrigatório no caller. Permissões declaradas no reusable workflow
