@@ -2,6 +2,10 @@ name: Promote Image to GitOps Dev
 
 on:
   workflow_call:
+    outputs:
+      pr-url:
+        description: "The URL of the created pull request"
+        value: ${{ jobs.update-gitops.outputs.pr-url }}
     inputs:
       service-name:
         required: true
@@ -35,6 +39,8 @@ jobs:
   update-gitops:
     name: Promote ${{ inputs.service-name }} to dev
     runs-on: ubuntu-latest
+    outputs:
+      pr-url: ${{ steps.create-pr.outputs.pr-url }}
     concurrency:
       group: gitops-dev-${{ inputs.service-name }}
       cancel-in-progress: false
@@ -160,6 +166,7 @@ jobs:
             -f "$VALUES_FILE" >/dev/null
 
       - name: Create promotion pull request
+        id: create-pr
         working-directory: gitops
         run: |
           if git diff --quiet -- "$VALUES_FILE"; then
@@ -185,9 +192,16 @@ jobs:
           - Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           EOF
 
-          gh pr create \
+          PR_URL=$(gh pr create \
             --repo "$GITOPS_REPO" \
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(gitops): promote ${SERVICE_NAME} to ${IMAGE_TAG}" \
-            --body-file pull-request.md
+            --body-file pull-request.md)
+          
+          echo "Created PR: $PR_URL"
+          echo "pr-url=$PR_URL" >> "$GITHUB_OUTPUT"
+          
+          echo "### 🚀 GitOps Promotion PR Created" >> "$GITHUB_STEP_SUMMARY"
+          echo "Service **${SERVICE_NAME}** was successfully promoted." >> "$GITHUB_STEP_SUMMARY"
+          echo "[View Pull Request]($PR_URL)" >> "$GITHUB_STEP_SUMMARY" 
