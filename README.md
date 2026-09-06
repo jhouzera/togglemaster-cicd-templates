@@ -5,6 +5,11 @@ Catálogo central de *Templates Reutilizáveis* (Reusable Workflows) de GitHub A
 ## 🎯 Propósito
 Padronizar a esteira de CI/CD em um único lugar, garantindo conformidade, inspeção de qualidade (SonarCloud/Trivy) e empacotamento. Outros repositórios consomem estes fluxos, eliminando redundâncias.
 
+## ⚙️ Como Funciona
+Aproveitando o recurso de `workflow_call` do GitHub Actions, este repositório age como uma biblioteca centralizada. 
+Quando a pipeline de `togglemaster-apps` precisa rodar verificações de segurança, ela não possui o código para isso; ela invoca o arquivo `security.yml` deste repositório, passando parâmetros (como `service-name`). 
+A nuvem executa o template central injetando o contexto do serviço que o chamou. Isso significa que, caso queiramos trocar a ferramenta de análise de segurança amanhã, mudaremos em apenas **um** arquivo neste repositório, e todos os microsserviços herdarão a mudança instantaneamente.
+
 ## 🚀 Como Utilizar
 Os repositórios chamam estes templates através da diretiva `uses:` em seus workflows locais.
 
